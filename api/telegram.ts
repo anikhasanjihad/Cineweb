@@ -25,6 +25,13 @@ const json = (data: unknown, status = 200) =>
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+// Telegram only accepts A-Z a-z 0-9 _ - in a webhook secret. We never send the raw secret: we send its SHA-256
+// (always valid), so any TELEGRAM_WEBHOOK_SECRET text works.
+const hook = async (secret: string) => {
+  const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`cinebox:${secret}`));
+  return Array.from(new Uint8Array(d), b => b.toString(16).padStart(2, '0')).join('');
+};
+
 const same = (a: string, b: string) => {
   if (a.length !== b.length) return false;
   let r = 0;
@@ -86,29 +93,35 @@ export default async function handler(req: Request): Promise<Response> {
         ok: true,
         bot: (me.result as any)?.username ?? me,
         webhookSet: Boolean(info?.result?.url),
-        webhookPointsHere: info?.result?.url === `${new URL(req.url).origin}/api/telegram`,
+        webhookUrl: info?.result?.url ?? null,
+        webhookPointsHere: info?.result?.url === `${appUrl(req)}/api/telegram`,
         pendingUpdates: info?.result?.pending_update_count,
         lastError: info?.result?.last_error_message ?? null,
         lastErrorDate: info?.result?.last_error_date ? new Date(info.result.last_error_date * 1000).toISOString() : null,
         buttonOpens: appUrl(req),
       });
     }
+    if (sp.get('setup') === null) return json({ok: true, how: 'Open /api/telegram?setup=YOUR_TELEGRAM_WEBHOOK_SECRET once. To test later: /api/telegram?check=YOUR_TELEGRAM_WEBHOOK_SECRET', env: {TELEGRAM_BOT_TOKEN: 'set', TELEGRAM_WEBHOOK_SECRET: 'set'}});
     const key = sp.get('setup') ?? '';
     if (!key || !same(key, secret)) return json({ok: false, error: 'Not allowed'}, 403);
     const url = appUrl(req);
-    const origin = new URL(req.url).origin;
     const out: Record<string, unknown> = {};
-    out.webhook = await call(token, 'setWebhook', {url: `${origin}/api/telegram`, secret_token: secret, allowed_updates: ['message'], drop_pending_updates: true});
+    out.bot = await call(token, 'getMe', {});
+    if (!(out.bot as any).ok) {
+      return json({ok: false, error: 'TELEGRAM_BOT_TOKEN is wrong (Telegram rejected it). Copy the token again from @BotFather, update it in Vercel, Redeploy, then open this link again.', telegram: out.bot}, 400);
+    }
+    out.webhook = await call(token, 'setWebhook', {url: `${url}/api/telegram`, secret_token: await hook(secret), allowed_updates: ['message'], drop_pending_updates: true});
     out.menuButton = await call(token, 'setChatMenuButton', {menu_button: {type: 'web_app', text: 'Open', web_app: {url}}});
     out.commands = await call(token, 'setMyCommands', {commands: [{command: 'start', description: 'Open Cinebox'}]});
     out.shortDescription = await call(token, 'setMyShortDescription', {short_description: 'Movies, series and live TV in one app.'});
     out.description = await call(token, 'setMyDescription', {description: '🎬 Cinebox\n\nWatch movies, series and live TV right inside Telegram. Press START to begin.'});
-    return json(out);
+    const bad = ['webhook', 'menuButton', 'commands'].filter(k => !(out[k] as any)?.ok);
+    return json({ok: bad.length === 0, failed: bad, webhookUrl: `${url}/api/telegram`, buttonOpens: url, next: bad.length ? 'Something failed, see details below.' : 'Done. Open the bot in Telegram and send /start.', ...out});
   }
 
   // ---------- Telegram webhook ----------
   if (req.method !== 'POST') return json({ok: false}, 405);
-  if (!same(req.headers.get('x-telegram-bot-api-secret-token') ?? '', secret)) return json({ok: false}, 403);
+  if (!same(req.headers.get('x-telegram-bot-api-secret-token') ?? '', await hook(secret))) return json({ok: false}, 403);
 
   let update: any;
   try { update = await req.json(); } catch { return json({ok: true}); }
@@ -117,7 +130,7 @@ export default async function handler(req: Request): Promise<Response> {
   const text = String(msg?.text ?? '');
   if (!chatId) return json({ok: true});
 
-  if (/^\/(start|app|open|help)(@\w+)?(\s|$)/i.test(text)) {
+  if (text && (/^\/(start|app|open|help)(@\w+)?(\s|$)/i.test(text) || msg.chat.type === 'private')) {
     if (msg.chat.type !== 'private') {
       // Mini App buttons only work in a private chat with the bot.
       await call(token, 'sendMessage', {chat_id: chatId, text: 'Please message me privately and press /start to open Cinebox.'});
@@ -128,7 +141,10 @@ export default async function handler(req: Request): Promise<Response> {
     const markup = button(url);
     // Nice welcome with the logo; if the picture can not be sent, fall back to a plain message.
     const photo = await call(token, 'sendPhoto', {chat_id: chatId, photo: `${url}/logo.png`, caption, parse_mode: 'HTML', reply_markup: markup});
-    if (!photo.ok) await call(token, 'sendMessage', {chat_id: chatId, text: caption, parse_mode: 'HTML', reply_markup: markup});
+    if (!photo.ok) {
+      const plain = await call(token, 'sendMessage', {chat_id: chatId, text: caption, parse_mode: 'HTML', reply_markup: markup});
+      if (!plain.ok) console.error('telegram sendMessage failed:', plain.description);
+    }
   }
   return json({ok: true});
 }

@@ -63,8 +63,19 @@ body { touch-action: manipulation; }
 
 /* ---------- hero ---------- */
 .hero { position: relative; height: 62vh; min-height: 420px; display: flex; align-items: flex-end; overflow: hidden; }
-.hero-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 20%; transform: scale(1.06); animation: kenburns 24s ease-in-out infinite alternate; }
-@keyframes kenburns { to { transform: scale(1.16) translateX(-1.5%); } }
+.hero-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 20%; }
+/* slider: pure transform/opacity animation (runs on the GPU, uses no data) */
+.hero-slide { position: absolute; inset: 0; will-change: transform, opacity; }
+.hero-slide.in { animation: heroIn .7s cubic-bezier(.22,.8,.3,1) both; }
+.hero-slide.out { animation: heroOut .7s cubic-bezier(.22,.8,.3,1) both; }
+@keyframes heroIn { from { transform: translateX(14%); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes heroOut { from { transform: none; opacity: 1; } to { transform: translateX(-14%); opacity: 0; } }
+.hero-body { animation: heroText .6s ease both; }
+@keyframes heroText { from { transform: translateY(10px); opacity: 0; } to { transform: none; opacity: 1; } }
+.hero-dots { position: absolute; z-index: 3; top: 14px; right: 16px; display: flex; gap: 5px; }
+.hero-dots i { width: 6px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.4); transition: width .3s, background .3s; }
+.hero-dots i.on { width: 18px; background: #fff; }
+@media (prefers-reduced-motion: reduce) { .hero-slide, .hero-body { animation: none !important; } }
 .hero::after { content: ''; position: absolute; inset: 0; background: linear-gradient(0deg, var(--bg) 2%, rgba(0,0,0,.55) 38%, rgba(0,0,0,.1) 100%), linear-gradient(90deg, rgba(0,0,0,.65), transparent 60%); }
 .hero-body { position: relative; z-index: 2; padding: 0 40px 56px; max-width: 720px; }
 .hero-body .title-xl { font-size: 54px; text-shadow: 0 4px 30px rgba(0,0,0,.5); }
@@ -274,7 +285,6 @@ body { overscroll-behavior: none; }
   .field { user-select: text; }
 
   /* lighter on the phone: fewer GPU effects, no endless animation (saves battery + data-free smoothness) */
-  .hero-bg { animation: none; transform: none; }
   .sidebar, .topbar, .search, .btn.glass, .round, .pbtn, .card { backdrop-filter: none; -webkit-backdrop-filter: none; }
   .search { background: rgba(255,255,255,.14); }
   .topbar { background: linear-gradient(180deg, rgba(0,0,0,.92), rgba(0,0,0,.6) 70%, transparent); }
@@ -437,4 +447,3 @@ body { overscroll-behavior: none; }
   .chan { background: var(--card); border-radius: 16px; padding: 10px; }
   .chan-live { top: 14px; left: 14px; }
 }
-.m-bar .build { margin-left: auto; font-size: 10px; font-weight: 500; letter-spacing: 0; color: var(--text-2); opacity: .6; }

@@ -1,4 +1,4 @@
-import {useEffect, useState} from 'react';
+import {useCallback, useEffect, useRef, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {useServers} from '../store/servers';
 import {providerApi} from '../provider/manager';
@@ -23,6 +23,105 @@ const LazyRow = ({provider, cat, onOpen}: {provider: NonNullable<ReturnType<type
   }, [near, provider, cat.filter]);
   if (posts === 'error' || (Array.isArray(posts) && posts.length === 0)) return null;
   return <div ref={ref}><PosterRow title={cat.title} posts={posts} onOpen={onOpen} /></div>;
+};
+
+
+/**
+ * Auto-sliding top banner. Data-friendly by design:
+ *  - it only reuses posters of the first row (the same image URLs the row already shows, so the browser cache serves them),
+ *  - the next picture is fetched only right before it is shown, and at most 2 pictures are in the page at once,
+ *  - it pauses when the tab/app is hidden, when the banner is scrolled out of view, with Data Saver on and with reduced motion.
+ */
+const SLIDE_MS = 5500;
+const HeroSlider = ({slides, serverName, onOpen}: {slides: Post[]; serverName?: string; onOpen: (p: Post) => void}) => {
+  const [idx, setIdx] = useState(0);
+  const [prev, setPrev] = useState<number | null>(null);
+  const [inView, setInView] = useState(true);
+  const [pageOn, setPageOn] = useState(() => !document.hidden);
+  const idxRef = useRef(0);
+  const loaded = useRef(new Set<number>([0]));
+  const box = useRef<HTMLElement>(null);
+  const touchX = useRef<number | null>(null);
+  const n = slides.length;
+  const list = useRef(slides);
+  list.current = slides;
+
+  const go = useCallback((to: number) => {
+    if (n < 2) return;
+    const t = ((to % n) + n) % n;
+    if (t === idxRef.current) return;
+    const show = () => { setPrev(idxRef.current); idxRef.current = t; setIdx(t); };
+    if (loaded.current.has(t)) { show(); return; }
+    const im = new Image();
+    im.onload = () => { loaded.current.add(t); show(); };
+    im.onerror = () => { /* broken picture: stay on the current slide */ };
+    im.src = imgUrl(list.current[t].image);
+  }, [n]);
+
+  useEffect(() => {
+    if (prev === null) return;
+    const t = setTimeout(() => setPrev(null), 800);
+    return () => clearTimeout(t);
+  }, [prev]);
+
+  useEffect(() => {
+    const on = () => setPageOn(!document.hidden);
+    document.addEventListener('visibilitychange', on);
+    return () => document.removeEventListener('visibilitychange', on);
+  }, []);
+
+  useEffect(() => {
+    const el = box.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(es => setInView(es.some(e => e.isIntersecting)), {threshold: 0.3});
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  const saveData = Boolean((navigator as any).connection?.saveData);
+  const calm = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const playing = n > 1 && inView && pageOn && !saveData && !calm;
+
+  useEffect(() => {
+    if (!playing) return;
+    const t = setInterval(() => go(idxRef.current + 1), SLIDE_MS);
+    return () => clearInterval(t);
+  }, [playing, go, idx]);
+
+  const cur = slides[idx];
+  const layer = (i: number, cls: string) => (
+    <div key={i} className={`hero-slide ${cls}`}>
+      <img className="hero-bg" src={imgUrl(slides[i].image)} alt="" decoding="async" draggable={false}
+        {...(i === 0 ? {fetchPriority: 'high' as const} : {})} />
+    </div>
+  );
+
+  return (
+    <header className="hero" ref={box}
+      onTouchStart={e => { touchX.current = e.touches[0].clientX; }}
+      onTouchEnd={e => {
+        const x0 = touchX.current; touchX.current = null;
+        if (x0 === null) return;
+        const dx = e.changedTouches[0].clientX - x0;
+        if (Math.abs(dx) > 50) go(idxRef.current + (dx < 0 ? 1 : -1));
+      }}>
+      {prev !== null && layer(prev, 'out')}
+      {layer(idx, prev === null && idx === 0 ? 'init' : 'in')}
+      <div className="hero-body" key={idx}>
+        <div className="muted" style={{fontWeight: 600, marginBottom: 8}}>{serverName}</div>
+        <h1 className="title-xl">{cur.title}</h1>
+        <div style={{display: 'flex', gap: 12, marginTop: 22}}>
+          <button className="btn primary press" onClick={() => onOpen(cur)}><IconPlay /> Play</button>
+          <button className="btn glass press" onClick={() => onOpen(cur)}>More info</button>
+        </div>
+      </div>
+      {n > 1 && (
+        <div className="hero-dots" aria-hidden="true">
+          {slides.map((_, i) => <i key={i} className={i === idx ? 'on' : ''} />)}
+        </div>
+      )}
+    </header>
+  );
 };
 
 export default function Home() {
@@ -59,23 +158,13 @@ export default function Home() {
   }
 
   const first = catalog?.length ? rows[catalog[0].title] : undefined;
-  const hero = Array.isArray(first) ? first.find(p => p.image) : undefined;
+  const slides = Array.isArray(first) ? first.filter(p => p.image).slice(0, 6) : [];
 
   return (
     <div className="page">
-      <div className="m-bar"><img src="/logo.png" alt="" width={30} height={30} /><span>Cinebox</span><small className="build">{__BUILD__}</small></div>
-      {hero ? (
-        <header className="hero">
-          <img className="hero-bg" src={imgUrl(hero.image)} alt="" decoding="async" fetchPriority="high" draggable={false} />
-          <div className="hero-body">
-            <div className="muted" style={{fontWeight: 600, marginBottom: 8}}>{active?.name}</div>
-            <h1 className="title-xl">{hero.title}</h1>
-            <div style={{display: 'flex', gap: 12, marginTop: 22}}>
-              <button className="btn primary press" onClick={() => open(hero)}><IconPlay /> Play</button>
-              <button className="btn glass press" onClick={() => open(hero)}>More info</button>
-            </div>
-          </div>
-        </header>
+      <div className="m-bar"><img src="/logo.png" alt="" width={30} height={30} /><span>Cinebox</span></div>
+      {slides.length ? (
+        <HeroSlider key={active?.key} slides={slides} serverName={active?.name} onOpen={open} />
       ) : (
         <div style={{height: 56}} />
       )}
