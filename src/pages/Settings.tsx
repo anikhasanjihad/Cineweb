@@ -7,6 +7,7 @@ import {DEFAULTS, resetSettings, updateSettings, useSettings} from '../lib/setti
 import {fetchLiveSources, LIVE_KEY} from './LiveTv';
 import {Cell, Group, Page, Pick, Range, Toggle} from '../components/Controls';
 import {PLAYER_CONTROLS} from './Player';
+import {fetchManifest} from '../provider/manager';
 
 const ACCENTS = ['#ff453a', '#ff9f0a', '#ffd60a', '#30d158', '#0a84ff', '#bf5af2', '#ff375f'];
 const CHEVRON = <span className="muted" style={{fontSize: 20}}>›</span>;
@@ -194,8 +195,8 @@ const About = ({back}: {back: () => void}) => (
   </Page>
 );
 
-interface AdminServer { id: string; label: string; source_url: string; manifest_url: string | null; provider_value: string | null; logo_url: string | null; position: number; enabled: boolean }
-const blank = (): Partial<AdminServer> => ({label: '', source_url: '', manifest_url: '', provider_value: '', logo_url: '', enabled: true});
+interface AdminServer { id: string; label: string; source_url: string; manifest_url: string | null; provider_value: string | null; logo_url: string | null; position: number; enabled: boolean; hidden_providers: string[] | null }
+const blank = (): Partial<AdminServer> => ({label: '', source_url: '', manifest_url: '', provider_value: '', logo_url: '', enabled: true, hidden_providers: []});
 
 const Admin = ({back}: {back: () => void}) => {
   const {profile} = useProfile();
@@ -204,6 +205,8 @@ const Admin = ({back}: {back: () => void}) => {
   const [edit, setEdit] = useState<Partial<AdminServer> | null>(null);
   const [live, setLive] = useState<Array<{id: string; label: string; url: string}>>([]);
   const [msg, setMsg] = useState('');
+  const [provs, setProvs] = useState<Array<{value: string; name: string; version: string}> | null>(null);
+  const [provErr, setProvErr] = useState('');
 
   const load = () => {
     supabase.from('cinehub_servers').select('*').order('position', {ascending: true}).order('created_at', {ascending: true}).then(({data}) => setServers((data ?? []) as AdminServer[]));
@@ -217,12 +220,13 @@ const Admin = ({back}: {back: () => void}) => {
     const row: Record<string, unknown> = {
       label: edit.label.trim(), source_url: edit.source_url.trim(), enabled: edit.enabled ?? true,
       manifest_url: edit.manifest_url?.trim() || null, provider_value: edit.provider_value?.trim() || null,
+      hidden_providers: edit.hidden_providers ?? [],
     };
     if (edit.logo_url?.trim()) row.logo_url = edit.logo_url.trim(); else if (edit.id) row.logo_url = null;
     if (!edit.id) row.position = servers.length;
     const q = edit.id ? supabase.from('cinehub_servers').update(row).eq('id', edit.id) : supabase.from('cinehub_servers').insert(row);
     const {error} = await q;
-    if (error) { setMsg(/logo_url/.test(error.message) ? `${error.message}. Run supabase/RUN_THIS_ONCE.sql once.` : error.message); return; }
+    if (error) { setMsg(/logo_url|hidden_providers/.test(error.message) ? `${error.message}. Run supabase/RUN_THIS_ONCE.sql once.` : error.message); return; }
     setEdit(null); setMsg('Saved'); load(); reloadServers();
   };
   const delServer = async (s: AdminServer) => {
@@ -236,6 +240,24 @@ const Admin = ({back}: {back: () => void}) => {
     setMsg(error ? error.message : 'Live TV links saved');
   };
 
+  const move = async (i: number, d: -1 | 1) => {
+    const a = servers[i], b = servers[i + d]; if (!a || !b) return;
+    const [r1, r2] = await Promise.all([
+      supabase.from('cinehub_servers').update({position: i + d}).eq('id', a.id),
+      supabase.from('cinehub_servers').update({position: i}).eq('id', b.id),
+    ]);
+    setMsg(r1.error?.message || r2.error?.message || ''); load(); reloadServers();
+  };
+  const openEdit = (s: Partial<AdminServer>) => {
+    setEdit(s); setProvs(null); setProvErr('');
+    if (s.source_url?.trim()) fetchManifest(s.source_url, s.manifest_url).then(setProvs).catch(e => setProvErr(e instanceof Error ? e.message : 'Could not read this source'));
+  };
+  const toggleHidden = (value: string, visible: boolean) => {
+    const set = new Set(edit?.hidden_providers ?? []);
+    if (visible) set.delete(value); else set.add(value);
+    setEdit({...edit, hidden_providers: [...set]});
+  };
+
   const f = (k: keyof AdminServer, ph: string) => (
     <input className="input" style={{flex: 1, width: 320}} placeholder={ph} value={String(edit?.[k] ?? '')} onChange={e => setEdit({...edit, [k]: e.target.value})} />
   );
@@ -244,13 +266,15 @@ const Admin = ({back}: {back: () => void}) => {
     <Page title="Admin Panel" back={back}>
       {msg && <p className="ok">{msg}</p>}
       <Group title="Servers" footer="Each server is a provider source. The logo shows on the Home Servers row.">
-        {servers.map(s => (
+        {servers.map((s, i) => (
           <Cell key={s.id} label={s.label} hint={s.enabled ? s.source_url : `Disabled · ${s.source_url}`}>
-            <button className="btn glass press" style={{height: 36, padding: '0 14px'}} onClick={() => setEdit(s)}>Edit</button>
+            <button className="btn glass press" style={{height: 36, padding: '0 12px', opacity: i === 0 ? .35 : 1}} disabled={i === 0} onClick={() => move(i, -1)} aria-label="Move up">↑</button>
+            <button className="btn glass press" style={{height: 36, padding: '0 12px', opacity: i === servers.length - 1 ? .35 : 1}} disabled={i === servers.length - 1} onClick={() => move(i, 1)} aria-label="Move down">↓</button>
+            <button className="btn glass press" style={{height: 36, padding: '0 14px'}} onClick={() => openEdit(s)}>Edit</button>
             <button className="btn glass press" style={{height: 36, padding: '0 14px', color: 'var(--accent)'}} onClick={() => delServer(s)}>Delete</button>
           </Cell>
         ))}
-        <Cell label="Add server" onClick={() => setEdit(blank())}><span className="muted" style={{fontSize: 20}}>+</span></Cell>
+        <Cell label="Add server" onClick={() => openEdit(blank())}><span className="muted" style={{fontSize: 20}}>+</span></Cell>
       </Group>
       {edit && (
         <Group title={edit.id ? 'Edit server' : 'New server'}>
@@ -260,6 +284,11 @@ const Admin = ({back}: {back: () => void}) => {
           <Cell label="Manifest URL" hint="Optional">{f('manifest_url', '')}</Cell>
           <Cell label="Provider value" hint="Optional: use only this provider">{f('provider_value', '')}</Cell>
           <Cell label="Enabled"><Toggle value={edit.enabled ?? true} onChange={v => setEdit({...edit, enabled: v})} /></Cell>
+          {provErr ? <Cell label="Providers" hint={provErr} /> : provs === null ? <Cell label="Providers" hint="Loading…" /> : provs.map(p => (
+            <Cell key={p.value} label={p.name} hint={`${p.value} · v${p.version} · switch off to hide it from users`}>
+              <Toggle value={!(edit.hidden_providers ?? []).includes(p.value)} onChange={v => toggleHidden(p.value, v)} />
+            </Cell>
+          ))}
           <Cell label=""><button className="btn glass press" style={{height: 38}} onClick={() => setEdit(null)}>Cancel</button><button className="btn accent press" style={{height: 38}} onClick={saveServer}>Save</button></Cell>
         </Group>
       )}

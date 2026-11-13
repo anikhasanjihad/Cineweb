@@ -18,6 +18,15 @@ const getText = async (url: string, timeoutMs = 15000) => {
   }
 };
 
+/** Lists the providers a source offers (used by the Admin Panel to switch single providers on or off). */
+export const fetchManifest = async (sourceUrl: string, manifestOverride?: string | null): Promise<Array<{value: string; name: string; version: string}>> => {
+  const source = createProviderSource(sourceUrl.trim());
+  const manifestUrl = manifestOverride?.trim() || source.manifestUrl || `${source.url}/manifest.json`;
+  const manifest = JSON.parse(await getText(`${manifestUrl}${manifestUrl.includes('?') ? '&' : '?'}t=${Date.now()}`));
+  if (!Array.isArray(manifest)) return [];
+  return manifest.filter((p: any) => p && !p.disabled).map((p: any) => ({value: String(p.value), name: String(p.display_name ?? p.value), version: String(p.version ?? '1')}));
+};
+
 /** Servers the admin set up, each expanded into the providers its source offers. */
 export const loadProviders = async (): Promise<Provider[]> => {
   const {data, error} = await supabase

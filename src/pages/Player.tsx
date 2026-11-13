@@ -20,6 +20,10 @@ interface State {
 }
 type MenuId = 'audio' | 'subtitle' | 'speed' | 'quality' | 'server' | 'resize' | 'sleep' | 'volume' | null;
 
+// Same rule as the phone app: the first 5 seconds of every video (not Live TV) play without sound.
+// It follows the playback position, so seeking back to the start mutes again, and the viewer cannot override it.
+const INTRO_MUTE_SECONDS = 5;
+
 const fmt = (s: number) => {
   if (!isFinite(s) || s < 0) return '0:00';
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = Math.floor(s % 60);
@@ -86,6 +90,7 @@ export default function Player() {
   const [buf, setBuf] = useState(0);
   const [vol, setVol] = useState(1);
   const [muted, setMuted] = useState(false);
+  const [introMuted, setIntroMuted] = useState(true);
   const [idle, setIdle] = useState(false);
   const [menu, setMenu] = useState<MenuId>(null);
   const [locked, setLocked] = useState(false);
@@ -132,7 +137,7 @@ export default function Player() {
   useEffect(() => {
     if (!st) return;
     let dead = false;
-    setStreams(null); setError(''); setBusy(true); setIdx(0); setSubIdx(-1); setCues([]);
+    setStreams(null); setError(''); setBusy(true); setIdx(0); setSubIdx(-1); setCues([]); setIntroMuted(true);
     if (st.direct) {
       setStreams([{server: live ? 'Live' : 'Video', link: st.direct.url, type: /\.mpd/i.test(st.direct.url) ? 'mpd' : /\.(mp4|mkv|webm)(\?|$)/i.test(st.direct.url) ? 'mp4' : 'm3u8', headers: st.direct.headers}]);
     } else if (st.local) {
@@ -226,6 +231,9 @@ export default function Player() {
     }
   }, [boostOk]);
 
+  // The element is silent while the intro rule is active (or the viewer muted it); live streams ignore the intro rule.
+  useEffect(() => { const el = video.current; if (el) el.muted = (introMuted && !live) || muted; }, [introMuted, live, muted, streams, idx, locked]);
+
   const setRate = (r: number) => { setSpeed(r); if (video.current) video.current.playbackRate = r; setMenu(null); };
   const setSleep = (m: number | 'end' | null) => {
     clearTimeout(sleepTimer.current); setMenu(null);
@@ -249,7 +257,7 @@ export default function Player() {
       else if (k === 'arrowup') { e.preventDefault(); applyVolume(vol + 0.05); }
       else if (k === 'arrowdown') { e.preventDefault(); applyVolume(vol - 0.05); }
       else if (k === 'f') void toggleFull();
-      else if (k === 'm') { setMuted(m => { if (video.current) video.current.muted = !m; return !m; }); }
+      else if (k === 'm') setMuted(m => !m);
       else if (k === 'n' && next) goTo(qi + 1);
       else if (k === 'escape') { if (menu || panel) { setMenu(null); setPanel(false); } else if (full) void exitFull(); else goBack(); }
     };
@@ -338,7 +346,8 @@ export default function Player() {
         onWaiting={() => setBusy(true)}
         onPlaying={() => setBusy(false)}
         onCanPlay={() => setBusy(false)}
-        onTimeUpdate={e => { setTime(e.currentTarget.currentTime); const b = e.currentTarget.buffered; if (b.length) setBuf(b.end(b.length - 1)); }}
+        onTimeUpdate={e => { setTime(e.currentTarget.currentTime); setIntroMuted(e.currentTarget.currentTime < INTRO_MUTE_SECONDS); const b = e.currentTarget.buffered; if (b.length) setBuf(b.end(b.length - 1)); }}
+        onSeeking={e => { if (e.currentTarget.currentTime < INTRO_MUTE_SECONDS) setIntroMuted(true); }}
         onDurationChange={e => setDur(e.currentTarget.duration)}
         onEnded={() => {
           if (sleepLeft === 'end') { setSleepLeft(null); say('Sleep timer ended'); return; }
@@ -449,7 +458,7 @@ export default function Player() {
           <button className="round big press" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'}>{playing ? <IconPause /> : <IconPlay />}</button>
           {!live && <button className="round press" onClick={() => seekBy(settings.seekInterval)} aria-label="Forward"><IconFwd10 /></button>}
           {next && show('next') && <button className="pbtn press" onClick={() => goTo(qi + 1)} title="Next episode" aria-label="Next episode">{ICON.next}</button>}
-          <button className="pbtn press" onClick={() => open('volume')} title="Volume" aria-label="Volume" onContextMenu={e => { e.preventDefault(); setMuted(m => { if (video.current) video.current.muted = !m; return !m; }); }}>{muted || vol === 0 ? ICON.mute : ICON.volume}</button>
+          <button className="pbtn press" onClick={() => open('volume')} title="Volume" aria-label="Volume" onContextMenu={e => { e.preventDefault(); setMuted(m => !m); }}>{muted || vol === 0 || (introMuted && !live) ? ICON.mute : ICON.volume}</button>
           <div style={{flex: 1}} />
           {show('audio') && bar('audio', 'Audio track', menu === 'audio', () => open('audio'))}
           {show('subtitle') && bar('subtitle', 'Subtitles', cues.length > 0, () => open('subtitle'))}

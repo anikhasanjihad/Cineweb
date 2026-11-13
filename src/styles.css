@@ -218,3 +218,113 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
 .live-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 800; letter-spacing: .6px; color: var(--accent); margin-top: 2px; }
 .live-badge i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
 .player video { transition: transform .4s var(--ease); }
+
+/* =====================================================================
+   Phone layout - mirrors the Cinebox phone app (bottom tab bar, compact
+   spacing, bottom-sheet menus). Anything under 700px wide gets it.
+   ===================================================================== */
+html, body, #root { height: 100%; }
+@supports (height: 100dvh) { html, body, #root { height: 100dvh; } }
+body { overscroll-behavior: none; }
+
+@media (max-width: 700px) {
+  :root { --pad: 16px; --tab-h: 58px; --safe-b: env(safe-area-inset-bottom, 0px); --safe-t: env(safe-area-inset-top, 0px); }
+  ::-webkit-scrollbar { display: none; }
+
+  /* tab bar at the bottom, like the app */
+  .shell { flex-direction: column-reverse; }
+  .sidebar {
+    width: 100%; flex-direction: row; align-items: stretch; justify-content: space-around; gap: 0;
+    padding: 6px 4px calc(6px + var(--safe-b)); border-right: 0; border-top: 1px solid var(--line);
+    background: rgba(20, 20, 24, 0.92); flex: 0 0 auto;
+  }
+  .sidebar .brand, .sidebar .spacer { display: none; }
+  .navlink { flex: 1; width: auto; min-width: 0; padding: 4px 0 2px; border-radius: 12px; font-size: 10.5px; }
+  .navlink svg { width: 26px; height: 26px; }
+  .navlink:hover { background: none; }
+  .navlink.active { background: none; }
+  .navlink.nolabel { padding: 8px 0; }
+  .main { padding-top: var(--safe-t); }
+
+  /* spacing */
+  .pad { padding: 0 var(--pad); }
+  .title-xl { font-size: 30px; letter-spacing: -.8px; }
+  .title-l { font-size: 20px; }
+  .row { margin-top: 22px; }
+  .row-head { padding: 0 var(--pad); margin-bottom: 8px; }
+  .scroller { gap: 12px; padding: 6px var(--pad) 16px; scroll-padding: 0 var(--pad); -webkit-overflow-scrolling: touch; }
+  .poster { width: 118px; }
+  .poster .img { border-radius: 14px; }
+  .poster:hover .img { transform: none; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+  .poster .cap { font-size: 12px; margin-top: 8px; }
+  .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px 10px; padding: 0 var(--pad) 28px; }
+  .grid.live { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .server { width: 84px; gap: 8px; }
+  .server .logo { width: 68px; height: 68px; border-radius: 20px; font-size: 26px; }
+  .server .name { font-size: 11.5px; max-width: 84px; }
+  .server:hover .logo { transform: none; }
+
+  /* hero */
+  .hero { height: 54vh; min-height: 340px; }
+  .hero-body { padding: 0 var(--pad) 28px; max-width: none; }
+  .hero-body .title-xl { font-size: 32px; }
+  .btn { height: 44px; padding: 0 20px; font-size: 15px; }
+
+  /* top bars / search */
+  .topbar { padding: calc(12px + var(--safe-t)) var(--pad) 12px; }
+  .search { max-width: none; }
+
+  /* info page: poster on top, everything stacked */
+  .info-wrap { flex-direction: column; align-items: center; gap: 18px; padding: 28px var(--pad) 24px; text-align: center; }
+  .info-poster { width: 170px; border-radius: 18px; }
+  .info-wrap .chips { justify-content: center; }
+  .info-wrap > div { width: 100%; min-width: 0; }
+  .tabs { max-width: 100%; overflow-x: auto; flex-wrap: nowrap; }
+  .tab { padding: 8px 14px; white-space: nowrap; }
+  .eps { max-width: none; text-align: left; }
+
+  /* settings / pages that use inline 40px padding */
+  .group-title { padding-left: 4px; }
+  .cell { padding: 14px 16px; flex-wrap: wrap; }
+  .cell .input, .cell .pick { max-width: 100%; }
+  .range { width: 120px; }
+  .sub-preview { height: 100px; }
+
+  /* login */
+  .card { width: calc(100% - 32px); max-width: 410px; padding: 28px 22px 24px; border-radius: 26px; }
+
+  /* player: full-screen, touch sized, menus become bottom sheets */
+  .pl-top { padding: calc(12px + var(--safe-t)) 14px 12px; gap: 10px; }
+  .pl-bot { padding: 40px 14px calc(12px + var(--safe-b)); gap: 8px; }
+  .ctrl { gap: 8px; }
+  .pl-bot .ctrl:last-child { flex-wrap: wrap; row-gap: 10px; justify-content: space-between; }
+  .bar, .bar:hover { height: 7px; }
+  .vol { display: none; }
+  .pbtn { width: 40px; height: 40px; }
+  .round { width: 40px; height: 40px; }
+  .round.big { width: 54px; height: 54px; }
+  .lock-fab { right: 16px; bottom: calc(16px + var(--safe-b)); }
+  .menu { left: 0; right: 0; bottom: 0; width: auto; max-height: 70vh; border-radius: 22px 22px 0 0; padding: 8px 8px calc(12px + var(--safe-b)); animation: sheetUp .3s var(--ease) both; }
+  .menu-list { max-height: 52vh; }
+  .opt { padding: 13px 14px; font-size: 15px; }
+  .ep-panel { width: min(100%, 360px); padding-top: calc(64px + var(--safe-t)); }
+  .upnext { right: 12px; left: 12px; width: auto; bottom: calc(120px + var(--safe-b)); }
+  .toast { top: calc(70px + var(--safe-t)); max-width: calc(100% - 32px); text-align: center; }
+  .subline { left: 4%; right: 4%; }
+  .subline span { font-size: calc(1.1rem * var(--sub-size, 1)); }
+  video::cue { font-size: calc(1.05rem * var(--sub-size, 1)); }
+}
+@keyframes sheetUp { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* phones held sideways: a short, wide screen */
+@media (max-height: 480px) and (orientation: landscape) {
+  .pl-top { padding-top: 8px; padding-bottom: 6px; }
+  .pl-bot { padding-top: 24px; padding-bottom: 8px; }
+  .menu { left: auto; right: 12px; bottom: 70px; width: 270px; border-radius: 20px; max-height: 80vh; }
+  .hero { height: 78vh; }
+}
+
+/* touch devices: no sticky hover states */
+@media (hover: none) {
+  .press:hover, .navlink:hover, .btn:hover { transform: none; }
+}
