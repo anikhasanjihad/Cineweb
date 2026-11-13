@@ -150,7 +150,7 @@ export default async function handler(req: Request): Promise<Response> {
     const caption = welcome(String(msg.from?.first_name ?? ''));
     const markup = button(url);
     // Nice welcome with the logo; if the picture can not be sent, fall back to a plain message.
-    const photo = await call(token, 'sendPhoto', {chat_id: chatId, photo: `${url}/logo.png`, caption, parse_mode: 'HTML', reply_markup: markup});
+    const photo = await call(token, 'sendPhoto', {chat_id: chatId, photo: `${url}/welcome.png`, caption, parse_mode: 'HTML', reply_markup: markup});
     if (!photo.ok) {
       const plain = await call(token, 'sendMessage', {chat_id: chatId, text: caption, parse_mode: 'HTML', reply_markup: markup});
       if (!plain.ok) console.error('telegram sendMessage failed:', plain.description);
