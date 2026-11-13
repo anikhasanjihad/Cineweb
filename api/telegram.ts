@@ -32,6 +32,16 @@ const hook = async (secret: string) => {
   return Array.from(new Uint8Array(d), b => b.toString(16).padStart(2, '0')).join('');
 };
 
+// Tells the owner why a key was refused (only lengths, never the secret itself).
+const denied = (key: string, secret: string) => json({
+  ok: false,
+  error: 'Not allowed',
+  version: 'tg-2',
+  reason: !key ? 'The link has no key after setup= / check='
+    : key.length !== secret.length ? `Length differs: the link key has ${key.length} characters but TELEGRAM_WEBHOOK_SECRET in Vercel has ${secret.length}. Vercel is still using an older value, or the variable differs. Save it for Production and Redeploy.`
+    : 'Same length but different letters. Check capital/small letters and 0/O, l/1.',
+}, 403);
+
 const same = (a: string, b: string) => {
   if (a.length !== b.length) return false;
   let r = 0;
@@ -86,7 +96,7 @@ export default async function handler(req: Request): Promise<Response> {
     const sp = new URL(req.url).searchParams;
     const check = sp.get('check');
     if (check !== null) {
-      if (!check || !same(check, secret)) return json({ok: false, error: 'Not allowed'}, 403);
+      if (!check || !same(check, secret)) return denied(check, secret);
       const me = await call(token, 'getMe', {});
       const info = await fetch(`https://api.telegram.org/bot${token}/getWebhookInfo`).then(r => r.json()).catch(() => null);
       return json({
@@ -103,7 +113,7 @@ export default async function handler(req: Request): Promise<Response> {
     }
     if (sp.get('setup') === null) return json({ok: true, how: 'Open /api/telegram?setup=YOUR_TELEGRAM_WEBHOOK_SECRET once. To test later: /api/telegram?check=YOUR_TELEGRAM_WEBHOOK_SECRET', env: {TELEGRAM_BOT_TOKEN: 'set', TELEGRAM_WEBHOOK_SECRET: 'set'}});
     const key = sp.get('setup') ?? '';
-    if (!key || !same(key, secret)) return json({ok: false, error: 'Not allowed'}, 403);
+    if (!key || !same(key, secret)) return denied(key, secret);
     const url = appUrl(req);
     const out: Record<string, unknown> = {};
     out.bot = await call(token, 'getMe', {});
