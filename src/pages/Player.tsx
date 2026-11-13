@@ -24,6 +24,15 @@ type MenuId = 'audio' | 'subtitle' | 'speed' | 'quality' | 'server' | 'resize' |
 // It follows the playback position, so seeking back to the start mutes again, and the viewer cannot override it.
 const INTRO_MUTE_SECONDS = 5;
 
+// Direct-first playback. The phone app talks straight to the video server (native player, no middleman).
+// A browser can do the same when the stream needs no special headers (Referer / User-Agent ...) and the
+// server allows it; then the video bytes never touch our Vercel proxy, so no Vercel bandwidth is used.
+// If direct fails (CORS, hotlink protection, plain http), that host is remembered and the proxy is used.
+const proxyHosts = new Set<string>();
+const hostOf = (u: string) => { try { return new URL(u).host; } catch { return ''; } };
+const canGoDirect = (link: string, headers: unknown) =>
+  /^https:/i.test(link) && !(headers && Object.keys(headers as object).length > 0) && !proxyHosts.has(hostOf(link));
+
 const fmt = (s: number) => {
   if (!isFinite(s) || s < 0) return '0:00';
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = Math.floor(s % 60);
@@ -76,6 +85,7 @@ export default function Player() {
   const idleTimer = useRef<number>();
   const sleepTimer = useRef<number>();
   const fileInput = useRef<HTMLInputElement>(null);
+  const directRef = useRef(false);
 
   const live = Boolean(st?.direct?.live);
   const progressId = st ? (st.link ? `${st.providerKey}|${st.link}` : st.direct?.url ?? st.local?.url ?? '') : '';
@@ -165,23 +175,35 @@ export default function Player() {
     const resume = () => { if (saved && saved.d - saved.t > 20 && saved.t > 5) el.currentTime = saved.t; el.playbackRate = speed; };
     const isHls = /m3u8/i.test(stream.type) || /\.m3u8(\?|$)/i.test(stream.link);
     if (isHls && Hls.isSupported()) {
-      const h = new Hls({loader: makeNativeLoader(stream.headers as Record<string, string> | undefined) as never, lowLatencyMode: live, maxBufferLength: 40});
-      hls.current = h;
-      h.loadSource(stream.link);
-      h.attachMedia(el);
-      h.on(Hls.Events.MANIFEST_PARSED, (_e, d) => {
-        setLevels(d.levels.map(l => l.height || 0)); resume(); el.play().catch(() => {});
-      });
-      h.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => setAudioTracks(h.audioTracks.map((t, i) => t.name || t.lang || `Track ${i + 1}`)));
-      h.on(Hls.Events.ERROR, (_e, d) => {
-        if (!d.fatal) return;
-        if (d.type === Hls.ErrorTypes.NETWORK_ERROR && live) { h.startLoad(); return; }
-        setError('This source could not be played. Try another server from the menu.'); setBusy(false);
-      });
+      const startHls = (direct: boolean) => {
+        const h = new Hls({...(direct ? {} : {loader: makeNativeLoader(stream.headers as Record<string, string> | undefined) as never}), lowLatencyMode: live, maxBufferLength: 40});
+        hls.current = h;
+        h.loadSource(stream.link);
+        h.attachMedia(el);
+        h.on(Hls.Events.MANIFEST_PARSED, (_e, d) => {
+          setLevels(d.levels.map(l => l.height || 0)); resume(); el.play().catch(() => {});
+        });
+        h.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => setAudioTracks(h.audioTracks.map((t, i) => t.name || t.lang || `Track ${i + 1}`)));
+        h.on(Hls.Events.ERROR, (_e, d) => {
+          if (!d.fatal) return;
+          if (direct && d.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            // Direct did not work for this host (CORS / hotlink block): remember it and go through the proxy.
+            proxyHosts.add(hostOf(stream.link));
+            h.destroy(); if (hls.current === h) hls.current = null;
+            startHls(false);
+            return;
+          }
+          if (d.type === Hls.ErrorTypes.NETWORK_ERROR && live) { h.startLoad(); return; }
+          setError('This source could not be played. Try another server from the menu.'); setBusy(false);
+        });
+      };
+      startHls(canGoDirect(stream.link, stream.headers));
       setBoostOk(true);
     } else {
-      // Plain files go through the proxy too, so Referer/User-Agent and Range (seeking) work like in the app.
-      el.src = st?.local ? stream.link : proxyUrl(stream.link, stream.headers as Record<string, string> | undefined, true);
+      // Plain files: straight from the video server when possible, otherwise through the proxy (headers + Range).
+      const direct = !st?.local && canGoDirect(stream.link, stream.headers);
+      directRef.current = direct;
+      el.src = st?.local || direct ? stream.link : proxyUrl(stream.link, stream.headers as Record<string, string> | undefined, true);
       el.addEventListener('loadedmetadata', resume, {once: true});
       el.play().catch(() => {});
       setBoostOk(false);
@@ -353,7 +375,14 @@ export default function Player() {
           if (sleepLeft === 'end') { setSleepLeft(null); say('Sleep timer ended'); return; }
           if (getSettings().autoPlayNext && next) setCountdown(5);
         }}
-        onError={() => { if (stream && !/m3u8/i.test(stream.link) && !/m3u8/i.test(stream.type)) { setError('This source could not be played. Try another server from the menu.'); setBusy(false); } }}
+        onError={() => {
+          if (directRef.current && stream && video.current) {
+            directRef.current = false; proxyHosts.add(hostOf(stream.link));
+            video.current.src = proxyUrl(stream.link, stream.headers as Record<string, string> | undefined, true);
+            video.current.play().catch(() => {});
+            return;
+          }
+          if (stream && !/m3u8/i.test(stream.link) && !/m3u8/i.test(stream.type)) { setError('This source could not be played. Try another server from the menu.'); setBusy(false); } }}
       />
 
       {cue && <div className="subline" style={{bottom: 'var(--sub-bottom, 6%)'}}><span>{cue.text}</span></div>}
