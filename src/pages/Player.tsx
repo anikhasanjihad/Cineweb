@@ -134,7 +134,9 @@ export default function Player() {
   }, []);
   const toggleFull = useCallback(async () => {
     const want = !full;
-    if (want) await wrap.current?.requestFullscreen().catch(() => {}); else await document.exitFullscreen().catch(() => {});
+    const tg = (window as any).Telegram?.WebApp;
+    if (tg?.isVersionAtLeast?.('8.0')) { try { want ? tg.requestFullscreen() : tg.exitFullscreen(); } catch { /* ignore */ } }
+    else if (want) await wrap.current?.requestFullscreen().catch(() => {}); else await document.exitFullscreen().catch(() => {});
     setFull(want);
   }, [full]);
 

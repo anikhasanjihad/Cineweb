@@ -238,7 +238,7 @@ html, body, #root { height: 100%; }
 @supports (height: 100dvh) { html, body, #root { height: 100dvh; } }
 body { overscroll-behavior: none; }
 
-@media (max-width: 700px) {
+@media (max-width: 700px), (hover: none) and (pointer: coarse) and (max-width: 1100px) {
   :root { --pad: 16px; --tab-h: 58px; --safe-b: env(safe-area-inset-bottom, 0px); --safe-t: env(safe-area-inset-top, 0px); }
   ::-webkit-scrollbar { display: none; }
 
@@ -368,7 +368,7 @@ body { overscroll-behavior: none; }
    floating rounded tab bar. Desktop is untouched.
    ===================================================================== */
 .m-bar { display: none; }
-@media (max-width: 700px) {
+@media (max-width: 700px), (hover: none) and (pointer: coarse) and (max-width: 1100px) {
   :root { --card: #141418; --radius-card: 22px; }
   body { background: #08080a; }
 
@@ -377,16 +377,14 @@ body { overscroll-behavior: none; }
   .m-bar img { border-radius: 9px; }
   .main { padding-top: 0; }
 
-  /* floating rounded tab bar */
+  /* slim OTT-style bottom bar: flat, dark, small icons, thin red marker on the active tab */
   .shell { background: #08080a; }
-  .sidebar {
-    margin: 0 12px calc(8px + var(--safe-b)); width: auto; padding: 6px;
-    border: 1px solid var(--line); border-radius: 26px; background: #17171c; box-shadow: 0 10px 30px rgba(0,0,0,.55);
-  }
-  .navlink { border-radius: 20px; padding: 7px 0 5px; font-size: 10px; gap: 2px; }
-  .navlink svg { width: 22px; height: 22px; }
-  .navlink.active { background: rgba(255,69,58,.16); color: var(--accent); }
+  .sidebar { margin: 0; width: 100%; padding: 0 0 var(--safe-b); border: 0; border-top: 1px solid rgba(255,255,255,.08); border-radius: 0; background: rgba(10,10,12,.97); box-shadow: none; }
+  .navlink { position: relative; flex: 1; border-radius: 0; padding: 8px 0 6px; font-size: 10px; font-weight: 500; letter-spacing: .1px; gap: 3px; color: #8e8e93; background: none; }
+  .navlink svg { width: 21px; height: 21px; }
+  .navlink.active { background: none; color: #fff; }
   .navlink.active svg { transform: none; }
+  .navlink.active::before { content: ''; position: absolute; top: 0; left: 50%; width: 24px; height: 2px; margin-left: -12px; border-radius: 0 0 3px 3px; background: var(--accent); }
 
   /* hero: inset rounded card */
   .hero { margin: 6px var(--pad) 0; height: min(58vh, 460px); min-height: 320px; border-radius: var(--radius-card); box-shadow: 0 14px 40px rgba(0,0,0,.5); }

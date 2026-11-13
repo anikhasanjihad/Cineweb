@@ -9,6 +9,14 @@
     <title>Cinebox</title>
     <meta name="theme-color" content="#000000" />
     <link rel="icon" href="/logo.png" />
+    <script>
+      // Telegram Mini App: Telegram opens the site with #tgWebAppData=... Load its helper only inside Telegram.
+      if (/tgWebApp/.test(location.hash)) document.write('<script src="https://telegram.org/js/telegram-web-app.js"><\/script>');
+    </script>
+    <script>
+      // Telegram's helper has already saved its launch data; clean the address so the app router starts at Home.
+      if (window.Telegram && window.Telegram.WebApp) history.replaceState(null, '', location.pathname + location.search + '#/');
+    </script>
   </head>
   <body>
     <div id="root"></div>
