@@ -63,7 +63,7 @@ export default function Home() {
 
   return (
     <div className="page">
-      <div className="m-bar"><img src="/logo.png" alt="" width={30} height={30} /><span>Cinebox</span></div>
+      <div className="m-bar"><img src="/logo.png" alt="" width={30} height={30} /><span>Cinebox</span><small className="build">{__BUILD__}</small></div>
       {hero ? (
         <header className="hero">
           <img className="hero-bg" src={imgUrl(hero.image)} alt="" decoding="async" fetchPriority="high" draggable={false} />

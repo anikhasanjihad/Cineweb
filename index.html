@@ -17,6 +17,18 @@
       // Telegram's helper has already saved its launch data; clean the address so the app router starts at Home.
       if (window.Telegram && window.Telegram.WebApp) history.replaceState(null, '', location.pathname + location.search + '#/');
     </script>
+    <script>
+      // Phone layout switch (same rule as src/lib/device.ts) - set before the first paint so nothing jumps.
+      (function () {
+        var d = document.documentElement, tg = window.Telegram && window.Telegram.WebApp, p = false;
+        try {
+          if (tg && /^(android|android_x|ios)$/.test(String(tg.platform))) p = true;
+          else if (innerWidth <= 820) p = true;
+          else p = (navigator.maxTouchPoints > 0 || matchMedia('(pointer: coarse)').matches) && Math.min(screen.width, screen.height) <= 900;
+        } catch (e) { p = innerWidth <= 820; }
+        if (p) d.classList.add('phone');
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

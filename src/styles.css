@@ -437,3 +437,4 @@ body { overscroll-behavior: none; }
   .chan { background: var(--card); border-radius: 16px; padding: 10px; }
   .chan-live { top: 14px; left: 14px; }
 }
+.m-bar .build { margin-left: auto; font-size: 10px; font-weight: 500; letter-spacing: 0; color: var(--text-2); opacity: .6; }

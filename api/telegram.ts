@@ -14,7 +14,11 @@
 // address to the user. The welcome message itself contains no link either.
 export const config = {runtime: 'edge'};
 
-const env = (k: string): string => String(((globalThis as any).process?.env?.[k]) ?? '').trim();
+declare const process: {env: Record<string, string | undefined>};
+// Read each variable by its full name (Vercel Edge needs that).
+const TOKEN = () => String(process.env.TELEGRAM_BOT_TOKEN ?? '').trim();
+const SECRET = () => String(process.env.TELEGRAM_WEBHOOK_SECRET ?? '').trim();
+const WEBAPP = () => String(process.env.WEBAPP_URL ?? '').trim();
 
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data, null, 2), {status, headers: {'content-type': 'application/json', 'cache-control': 'no-store'}});
@@ -38,7 +42,7 @@ const call = async (token: string, method: string, body: Record<string, unknown>
 };
 
 const appUrl = (req: Request) => {
-  const set = env('WEBAPP_URL').replace(/\/+$/, '');
+  const set = WEBAPP().replace(/\/+$/, '');
   if (/^https:\/\//i.test(set)) return set;
   return new URL(req.url).origin;
 };
@@ -59,13 +63,37 @@ const welcome = (name: string) =>
 const button = (url: string) => ({inline_keyboard: [[{text: '🎬 Open Cinebox', web_app: {url}}]]});
 
 export default async function handler(req: Request): Promise<Response> {
-  const token = env('TELEGRAM_BOT_TOKEN');
-  const secret = env('TELEGRAM_WEBHOOK_SECRET');
-  if (!token || !secret) return json({ok: false, error: 'Set TELEGRAM_BOT_TOKEN and TELEGRAM_WEBHOOK_SECRET in Vercel, then redeploy.'}, 500);
+  const token = TOKEN();
+  const secret = SECRET();
+  if (!token || !secret) {
+    return json({
+      ok: false,
+      error: 'Set TELEGRAM_BOT_TOKEN and TELEGRAM_WEBHOOK_SECRET in Vercel (Settings -> Environment Variables), then Redeploy.',
+      TELEGRAM_BOT_TOKEN: token ? 'set' : 'MISSING',
+      TELEGRAM_WEBHOOK_SECRET: secret ? 'set' : 'MISSING',
+    }, 500);
+  }
 
-  // ---------- one-time setup ----------
+  // ---------- one-time setup / health check ----------
   if (req.method === 'GET') {
-    const key = new URL(req.url).searchParams.get('setup') ?? '';
+    const sp = new URL(req.url).searchParams;
+    const check = sp.get('check');
+    if (check !== null) {
+      if (!check || !same(check, secret)) return json({ok: false, error: 'Not allowed'}, 403);
+      const me = await call(token, 'getMe', {});
+      const info = await fetch(`https://api.telegram.org/bot${token}/getWebhookInfo`).then(r => r.json()).catch(() => null);
+      return json({
+        ok: true,
+        bot: (me.result as any)?.username ?? me,
+        webhookSet: Boolean(info?.result?.url),
+        webhookPointsHere: info?.result?.url === `${new URL(req.url).origin}/api/telegram`,
+        pendingUpdates: info?.result?.pending_update_count,
+        lastError: info?.result?.last_error_message ?? null,
+        lastErrorDate: info?.result?.last_error_date ? new Date(info.result.last_error_date * 1000).toISOString() : null,
+        buttonOpens: appUrl(req),
+      });
+    }
+    const key = sp.get('setup') ?? '';
     if (!key || !same(key, secret)) return json({ok: false, error: 'Not allowed'}, 403);
     const url = appUrl(req);
     const origin = new URL(req.url).origin;
