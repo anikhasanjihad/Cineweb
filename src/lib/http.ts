@@ -7,8 +7,12 @@ const b64url = (s: string) => {
   return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 };
 
+// By default the proxy is the Vercel function on this site (/api/proxy). Set VITE_PROXY_URL to move it to your own
+// Cloudflare Worker (see cloudflare-worker/proxy.js) so video bandwidth is not billed by Vercel.
+const PROXY_BASE = ((import.meta as any).env?.VITE_PROXY_URL as string | undefined)?.trim().replace(/\/+$/, '') || '/api/proxy';
+
 /**
- * URL of our own Vercel proxy (api/proxy.ts) for a remote resource.
+ * URL of our own proxy (api/proxy.ts) for a remote resource.
  * `raw` keeps the real status / Range support, which <video> needs.
  */
 export const proxyUrl = (url: string, headers?: Record<string, string>, raw = false, redirect: 'follow' | 'manual' = 'follow') => {
@@ -16,7 +20,7 @@ export const proxyUrl = (url: string, headers?: Record<string, string>, raw = fa
   if (headers && Object.keys(headers).length) q += `&h=${b64url(JSON.stringify(headers))}`;
   if (raw) q += '&raw=1';
   if (redirect === 'manual') q += '&r=manual';
-  return `/api/proxy?${q}`;
+  return `${PROXY_BASE}?${q}`;
 };
 
 /** Images: only plain-http images need the proxy (an https page can not show them). */
