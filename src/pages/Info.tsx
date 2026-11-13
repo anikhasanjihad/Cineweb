@@ -67,12 +67,12 @@ export default function Info() {
 
   return (
     <div className="page info">
-      <div className="info-bg" style={{backgroundImage: `url("${imgUrl(info.poster || img)}")`}} />
-      <div style={{position: 'relative', padding: '22px 40px 0'}}>
+      <div className="info-bg" />
+      <div className="info-top">
         <button className="round press" onClick={() => nav(-1)} aria-label="Back"><IconBack /></button>
       </div>
       <div className="info-wrap">
-        <div className="info-poster" style={{backgroundImage: `url("${imgUrl(img)}")`}} />
+        <div className="info-poster">{img ? <img src={imgUrl(img)} alt="" decoding="async" draggable={false} /> : null}</div>
         <div style={{flex: 1, minWidth: 0}}>
           <h1 className="title-xl">{info.title}</h1>
           <div className="chips">
@@ -81,7 +81,7 @@ export default function Info() {
             {info.tags?.slice(0, 6).map(t => <span key={t} className="chip">{t}</span>)}
           </div>
           <p className="muted" style={{lineHeight: 1.55, maxWidth: 720, fontSize: 15.5, userSelect: 'text'}}>{info.synopsis}</p>
-          <div style={{display: 'flex', gap: 12, margin: '20px 0'}}>
+          <div className="actions">
             <button className="btn primary press" disabled={!items.length} onClick={() => items[0] && play(items[0])}><IconPlay /> {isSeries ? 'Play first episode' : 'Play'}</button>
             <button className="btn glass press" onClick={() => setSaved(toggleLibrary({title: info.title, link, image: img, providerKey}))}>
               <IconBookmark on={saved} /> {saved ? 'Saved' : 'Save'}

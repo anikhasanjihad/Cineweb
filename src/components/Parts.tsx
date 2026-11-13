@@ -1,4 +1,4 @@
-import {useRef, type ReactNode} from 'react';
+import {useEffect, useRef, useState, type ReactNode} from 'react';
 import {NavLink} from 'react-router-dom';
 import type {Post, Provider} from '../provider/types';
 import {IconHome, IconLibrary, IconLive, IconSearch, IconSettings} from './Icons';
@@ -34,7 +34,7 @@ export const Sidebar = () => {
 
 export const PosterCard = ({post, onOpen}: {post: Post; onOpen: (p: Post) => void}) => (
   <button className="poster" onClick={() => onOpen(post)} title={post.title}>
-    <div className="img" style={post.image ? {backgroundImage: `url("${imgUrl(post.image)}")`} : undefined} />
+    <div className="img">{post.image ? <img src={imgUrl(post.image)} alt="" loading="lazy" decoding="async" draggable={false} /> : null}</div>
     <div className="cap">{post.title}</div>
   </button>
 );
@@ -68,13 +68,13 @@ export const HScroll = ({children}: {children: ReactNode}) => {
 };
 
 export const ServerRow = ({providers, active, onSelect}: {providers: Provider[]; active: Provider | null; onSelect: (p: Provider) => void}) => (
-  <section className="row">
+  <section className="row servers">
     <div className="row-head"><h2 className="title-l">Servers</h2></div>
     <HScroll>
       {providers.map(p => (
         <button key={p.key} className={`server press${active?.key === p.key ? ' on' : ''}`} onClick={() => onSelect(p)} title={p.name}>
-          <div className="logo" style={p.logo ? {backgroundImage: `url("${imgUrl(p.logo)}")`} : undefined}>
-            {p.logo ? null : p.name.trim().charAt(0).toUpperCase()}
+          <div className="logo">
+            {p.logo ? <img src={imgUrl(p.logo)} alt="" loading="lazy" decoding="async" draggable={false} /> : p.name.trim().charAt(0).toUpperCase()}
           </div>
           <div className="name">{p.name}</div>
         </button>
@@ -90,3 +90,18 @@ export const Message = ({title, text, action}: {title: string; text?: string; ac
     {action}
   </div>
 );
+
+/** true once the element comes within `margin` of the screen (then stays true) - used to load rows only when needed. */
+export const useNearScreen = (margin = '400px') => {
+  const ref = useRef<HTMLDivElement>(null);
+  const [near, setNear] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || near) return;
+    if (typeof IntersectionObserver === 'undefined') { setNear(true); return; }
+    const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { setNear(true); io.disconnect(); } }, {rootMargin: `${margin} 0px`});
+    io.observe(el);
+    return () => io.disconnect();
+  }, [near, margin]);
+  return [ref, near] as const;
+};

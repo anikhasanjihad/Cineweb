@@ -8,7 +8,7 @@ export default function Library() {
   const [items] = useState(getLibrary);
   return (
     <div className="page">
-      <div style={{padding: '48px 40px 20px'}}><h1 className="title-xl">Library</h1></div>
+      <div className="page-head"><h1 className="title-xl">Library</h1></div>
       {items.length === 0 ? (
         <Message title="Nothing saved yet" text="Tap the bookmark on any title to keep it here." />
       ) : (

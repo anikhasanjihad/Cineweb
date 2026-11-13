@@ -23,8 +23,8 @@ export const proxyUrl = (url: string, headers?: Record<string, string>, raw = fa
   return `${PROXY_BASE}?${q}`;
 };
 
-/** Images: only plain-http images need the proxy (an https page can not show them). */
-export const imgUrl = (url?: string | null) => (url && /^http:\/\//i.test(url) ? proxyUrl(url, undefined, true) : url ?? '');
+/** Images load straight from their own server (no proxy). Plain-http images are upgraded to https. */
+export const imgUrl = (url?: string | null) => (url ? url.replace(/^http:\/\//i, 'https://') : '');
 
 const NO_BODY = new Set([101, 204, 205, 304]);
 

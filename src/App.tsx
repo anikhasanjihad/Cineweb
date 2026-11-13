@@ -1,15 +1,16 @@
+import {Suspense, lazy} from 'react';
 import {HashRouter, Navigate, Outlet, Route, Routes, useLocation} from 'react-router-dom';
 import {AuthProvider, useAuth} from './store/auth';
 import {ServersProvider} from './store/servers';
 import {Sidebar} from './components/Parts';
 import Login from './pages/Login';
 import Home from './pages/Home';
-import Search from './pages/Search';
-import Library from './pages/Library';
-import Settings from './pages/Settings';
-import Info from './pages/Info';
-import Player from './pages/Player';
-import LiveTv from './pages/LiveTv';
+const Search = lazy(() => import('./pages/Search'));
+const Library = lazy(() => import('./pages/Library'));
+const Settings = lazy(() => import('./pages/Settings'));
+const Info = lazy(() => import('./pages/Info'));
+const Player = lazy(() => import('./pages/Player'));
+const LiveTv = lazy(() => import('./pages/LiveTv'));
 
 const Shell = () => {
   const {session, ready} = useAuth();
@@ -35,6 +36,7 @@ export default function App() {
   return (
     <AuthProvider>
       <HashRouter>
+        <Suspense fallback={<div className="center"><div className="spin" /></div>}>
         <Routes>
           <Route element={<Shell />}>
             <Route index element={<Home />} />
@@ -48,6 +50,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
+        </Suspense>
       </HashRouter>
     </AuthProvider>
   );

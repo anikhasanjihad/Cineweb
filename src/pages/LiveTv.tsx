@@ -72,7 +72,7 @@ export default function LiveTv() {
       <div className="grid live">
         {shown.map(c => (
           <button key={c.id} className="chan press" onClick={() => play(c)} title={c.name}>
-            <div className="chan-logo" style={c.logo ? {backgroundImage: `url("${imgUrl(c.logo)}")`} : undefined}>{c.logo ? null : c.name.charAt(0).toUpperCase()}</div>
+            <div className="chan-logo">{c.logo ? <img src={imgUrl(c.logo)} alt="" loading="lazy" decoding="async" draggable={false} /> : c.name.charAt(0).toUpperCase()}</div>
             <div className="chan-name">{c.name}</div>
             <div className="chan-live"><i /> LIVE</div>
           </button>
