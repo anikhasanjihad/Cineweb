@@ -7,6 +7,7 @@ import type {Stream} from '../provider/types';
 import {appFetch, proxyUrl} from '../lib/http';
 import {load, save} from '../lib/storage';
 import {getSettings, updateSettings, useSettings} from '../lib/settings';
+import {videoProxyAllowed} from '../lib/videoProxy';
 import {makeNativeLoader} from '../player/hlsLoader';
 import {cueAt, parseSubtitles, type Cue} from '../player/subtitles';
 import {IconBack, IconBack10, IconFull, IconFwd10, IconPause, IconPlay} from '../components/Icons';
@@ -24,14 +25,13 @@ type MenuId = 'audio' | 'subtitle' | 'speed' | 'quality' | 'server' | 'resize' |
 // It follows the playback position, so seeking back to the start mutes again, and the viewer cannot override it.
 const INTRO_MUTE_SECONDS = 5;
 
-// Direct-first playback. The phone app talks straight to the video server (native player, no middleman).
-// A browser can do the same when the stream needs no special headers (Referer / User-Agent ...) and the
-// server allows it; then the video bytes never touch our Vercel proxy, so no Vercel bandwidth is used.
-// If direct fails (CORS, hotlink protection, plain http), that host is remembered and the proxy is used.
+// Direct playback, like the phone app: the video comes straight from the provider's server, so no video data
+// passes through our proxy (no Vercel bandwidth). The browser can not send Referer / User-Agent / Origin, so a
+// stream that needs them only works when the admin allowed the proxy fallback (Admin Panel -> Video playback).
 const proxyHosts = new Set<string>();
 const hostOf = (u: string) => { try { return new URL(u).host; } catch { return ''; } };
-const canGoDirect = (link: string, headers: unknown) =>
-  /^https:/i.test(link) && !(headers && Object.keys(headers as object).length > 0) && !proxyHosts.has(hostOf(link));
+const goDirect = (link: string, proxyOk: boolean) => /^https:/i.test(link) && !(proxyOk && proxyHosts.has(hostOf(link)));
+const NEED_PROXY = 'This source can not play in the browser. Try another server from the menu.';
 
 const fmt = (s: number) => {
   if (!isFinite(s) || s < 0) return '0:00';
@@ -86,6 +86,8 @@ export default function Player() {
   const sleepTimer = useRef<number>();
   const fileInput = useRef<HTMLInputElement>(null);
   const directRef = useRef(false);
+  const proxyOkRef = useRef(false);
+  const [proxyReady, setProxyReady] = useState(false);
 
   const live = Boolean(st?.direct?.live);
   const progressId = st ? (st.link ? `${st.providerKey}|${st.link}` : st.direct?.url ?? st.local?.url ?? '') : '';
@@ -143,6 +145,13 @@ export default function Player() {
     setPanel(false); setCountdown(null);
   }, [q, st, nav]);
 
+  useEffect(() => { void videoProxyAllowed().then(ok => { proxyOkRef.current = ok; setProxyReady(true); }); }, []);
+  // Send no Referer to video servers while watching: many only block foreign referrers, so direct play works more often.
+  useEffect(() => {
+    const m = document.createElement('meta'); m.name = 'referrer'; m.content = 'no-referrer'; document.head.appendChild(m);
+    return () => { m.remove(); };
+  }, []);
+
   // ---- streams ----
   useEffect(() => {
     if (!st) return;
@@ -165,10 +174,15 @@ export default function Player() {
 
   const stream = streams?.[idx];
 
+  const skipOrFail = useCallback(() => {
+    if (streams && idx + 1 < streams.length) { say('Trying another server…'); setIdx(idx + 1); }
+    else { setError(NEED_PROXY); setBusy(false); }
+  }, [streams, idx, say]);
+
   // ---- attach source ----
   useEffect(() => {
     const el = video.current;
-    if (!el || !stream) return;
+    if (!el || !stream || !proxyReady) return;
     setBusy(true); setError(''); setLevels([]); setLevel(-1); setAudioTracks([]); setAudioIdx(0);
     hls.current?.destroy(); hls.current = null;
     const saved = settings.rememberPosition && !live ? load<Record<string, {t: number; d: number}>>('progress', {})[progressId] : undefined;
@@ -187,21 +201,22 @@ export default function Player() {
         h.on(Hls.Events.ERROR, (_e, d) => {
           if (!d.fatal) return;
           if (direct && d.type === Hls.ErrorTypes.NETWORK_ERROR) {
-            // Direct did not work for this host (CORS / hotlink block): remember it and go through the proxy.
-            proxyHosts.add(hostOf(stream.link));
+            // Direct did not work for this host (CORS / hotlink block).
             h.destroy(); if (hls.current === h) hls.current = null;
-            startHls(false);
+            if (proxyOkRef.current) { proxyHosts.add(hostOf(stream.link)); startHls(false); } else skipOrFail();
             return;
           }
           if (d.type === Hls.ErrorTypes.NETWORK_ERROR && live) { h.startLoad(); return; }
           setError('This source could not be played. Try another server from the menu.'); setBusy(false);
         });
       };
-      startHls(canGoDirect(stream.link, stream.headers));
+      const direct = goDirect(stream.link, proxyOkRef.current);
+      if (direct || proxyOkRef.current) startHls(direct); else { skipOrFail(); return; }
       setBoostOk(true);
     } else {
       // Plain files: straight from the video server when possible, otherwise through the proxy (headers + Range).
-      const direct = !st?.local && canGoDirect(stream.link, stream.headers);
+      const direct = !st?.local && goDirect(stream.link, proxyOkRef.current);
+      if (!st?.local && !direct && !proxyOkRef.current) { skipOrFail(); return; }
       directRef.current = direct;
       el.src = st?.local || direct ? stream.link : proxyUrl(stream.link, stream.headers as Record<string, string> | undefined, true);
       el.addEventListener('loadedmetadata', resume, {once: true});
@@ -209,7 +224,7 @@ export default function Player() {
       setBoostOk(false);
     }
     return () => { hls.current?.destroy(); hls.current = null; };
-  }, [stream]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [stream, proxyReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- subtitles ----
   const loadSubs = useCallback(async (i: number) => {
@@ -377,7 +392,9 @@ export default function Player() {
         }}
         onError={() => {
           if (directRef.current && stream && video.current) {
-            directRef.current = false; proxyHosts.add(hostOf(stream.link));
+            directRef.current = false;
+            if (!proxyOkRef.current) { skipOrFail(); return; }
+            proxyHosts.add(hostOf(stream.link));
             video.current.src = proxyUrl(stream.link, stream.headers as Record<string, string> | undefined, true);
             video.current.play().catch(() => {});
             return;

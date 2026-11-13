@@ -8,6 +8,7 @@ import {fetchLiveSources, LIVE_KEY} from './LiveTv';
 import {Cell, Group, Page, Pick, Range, Toggle} from '../components/Controls';
 import {PLAYER_CONTROLS} from './Player';
 import {fetchManifest} from '../provider/manager';
+import {setVideoProxyAllowed, videoProxyAllowed} from '../lib/videoProxy';
 
 const ACCENTS = ['#ff453a', '#ff9f0a', '#ffd60a', '#30d158', '#0a84ff', '#bf5af2', '#ff375f'];
 const CHEVRON = <span className="muted" style={{fontSize: 20}}>›</span>;
@@ -207,6 +208,8 @@ const Admin = ({back}: {back: () => void}) => {
   const [msg, setMsg] = useState('');
   const [provs, setProvs] = useState<Array<{value: string; name: string; version: string}> | null>(null);
   const [provErr, setProvErr] = useState('');
+  const [vproxy, setVproxy] = useState(false);
+  useEffect(() => { void videoProxyAllowed(true).then(setVproxy); }, []);
 
   const load = () => {
     supabase.from('cinehub_servers').select('*').order('position', {ascending: true}).order('created_at', {ascending: true}).then(({data}) => setServers((data ?? []) as AdminServer[]));
@@ -292,6 +295,9 @@ const Admin = ({back}: {back: () => void}) => {
           <Cell label=""><button className="btn glass press" style={{height: 38}} onClick={() => setEdit(null)}>Cancel</button><button className="btn accent press" style={{height: 38}} onClick={saveServer}>Save</button></Cell>
         </Group>
       )}
+      <Group title="Video playback" footer="Off: video plays straight from the provider's server and uses none of your Vercel bandwidth, but streams that need special headers (Referer / User-Agent) will not play in the browser. On: those streams play through your proxy, which uses bandwidth.">
+        <Cell label="Use proxy for videos that need it"><Toggle value={vproxy} onChange={async v => { setVproxy(v); const err = await setVideoProxyAllowed(v); setMsg(err || (v ? 'Video proxy on' : 'Video proxy off')); if (err) setVproxy(!v); }} /></Cell>
+      </Group>
       <Group title="Live TV links" footer="JSON or M3U links. Every signed-in user sees these channels.">
         {live.map((s, i) => (
           <Cell key={s.id} label="">
